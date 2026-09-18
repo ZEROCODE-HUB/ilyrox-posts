@@ -4,7 +4,6 @@ import { getReelById } from "../../services/reelService";
 import { getProfileById } from "../../services/userService";
 import { DownloadAppModal } from "../Shared/DownloadAppModal";
 import { GeneratedByIlyrox } from "../Shared/GeneratedByIlyrox";
-import { AppDownloadBar } from "../Shared/AppDownloadBar";
 import type { Reel, perfiles } from "../types";
 import Avatar from "../Shared/Avatar";
 
@@ -20,11 +19,6 @@ export const ReelViewer = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    setIsMobile(/android|iphone|ipad|ipod/i.test(navigator.userAgent));
-  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -133,8 +127,6 @@ export const ReelViewer = ({
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
       />
-
-      {isMobile && <AppDownloadBar />}
     </div>
   );
 };
