@@ -6,7 +6,6 @@ import type { Post, perfiles } from "../types";
 import { DownloadAppModal } from "../Shared/DownloadAppModal";
 import { GeneratedByIlyrox } from "../Shared/GeneratedByIlyrox";
 import { SpecialPostCard } from "./SpecialPostCard";
-import { AppDownloadBar } from "../Shared/AppDownloadBar";
 
 export const PostViewer = ({
   id,
@@ -20,11 +19,6 @@ export const PostViewer = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    setIsMobile(/android|iphone|ipad|ipod/i.test(navigator.userAgent));
-  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -121,8 +115,6 @@ export const PostViewer = ({
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
       />
-
-      {isMobile && <AppDownloadBar />}
     </div>
   );
 };

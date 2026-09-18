@@ -11,7 +11,6 @@ import type { Property as GlobalProperty, perfiles } from "../types";
 
 import { DownloadAppModal } from "../Shared/DownloadAppModal";
 import { GeneratedByIlyrox } from "../Shared/GeneratedByIlyrox";
-import { AppDownloadBar } from "../Shared/AppDownloadBar";
 import { isInAppBrowser, openInApp } from "../../lib/openInApp";
 
 export const PropertyViewer = ({
@@ -26,11 +25,6 @@ export const PropertyViewer = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    setIsMobile(/android|iphone|ipad|ipod/i.test(navigator.userAgent));
-  }, []);
 
   useEffect(() => {
     // Dentro de webviews (Instagram, Facebook, WhatsApp, Messenger…) los
@@ -148,8 +142,6 @@ export const PropertyViewer = ({
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
       />
-
-      {isMobile && <AppDownloadBar />}
     </div>
   );
 };
