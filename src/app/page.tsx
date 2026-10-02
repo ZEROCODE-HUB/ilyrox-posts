@@ -38,7 +38,7 @@ export async function generateMetadata({
     try {
       const prop = await getPropertyById(id);
       if (prop) {
-        title = `ILYROX - Propiedad ${prop.tipo}`;
+        title = `ILYROX - ${prop.subtipo || prop.tipo} en ${prop.location?.city || prop.municipio || ""}`;
         description = prop.descripcion || description;
         if (prop.fotos && prop.fotos.length > 0) {
           imageUrl = makeAbsolute(prop.fotos[0]);
