@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { getPostById } from "../../services/postService";
 import { getProfileById } from "../../services/userService";
 import type { Post, perfiles } from "../types";
-import { DownloadAppModal } from "../Shared/DownloadAppModal";
 import { GeneratedByIlyrox } from "../Shared/GeneratedByIlyrox";
 import { SpecialPostCard } from "./SpecialPostCard";
 
@@ -18,7 +17,6 @@ export const PostViewer = ({
   const [sharerOverride, setSharerOverride] = useState<perfiles | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -100,21 +98,13 @@ export const PostViewer = ({
   return (
     <div className="flex flex-col items-center w-full mt-12 pb-24">
       <div className="flex justify-center w-full">
-        <SpecialPostCard
-          post={displayPost}
-          hideData={hideData}
-          mode="detail"
-          onUserClick={() => setIsModalOpen(true)}
-          onOfferClick={() => setIsModalOpen(true)}
-        />
+        {/* Sin onUserClick/onOfferClick a propósito: ni el avatar ni el botón
+            "Ofrecer propiedad" abren modals. `SpecialPostCard` es una tarjeta
+            puramente informativa en la vista de detalle. */}
+        <SpecialPostCard post={displayPost} hideData={hideData} mode="detail" />
       </div>
 
       <GeneratedByIlyrox className="mt-4 mb-8" />
-
-      <DownloadAppModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-      />
     </div>
   );
 };

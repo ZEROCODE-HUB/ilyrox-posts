@@ -4,10 +4,14 @@ import Avatar from "../Shared/Avatar";
 import { ImageCarousel } from "../Shared/ImageCarousel";
 import { formatPrice } from "../../utils/priceFormatter";
 import firstUpperCase from "../../utils/firstUpperCase";
+import { parseImages } from "../../utils/parseImages";
 
 interface SpecialPostCardProps {
   post: Post;
   mode?: "preview" | "detail" | "grid";
+  /** Opcionales y ya no los usa nadie en la vista pública: la tarjeta es
+   *  puramente informativa. Se mantienen por si el modo "preview" vuelve a
+   *  necesitar una acción. */
   onUserClick?: () => void;
   onOfferClick?: () => void;
   hideData?: boolean;
@@ -33,8 +37,16 @@ export const SpecialPostCard = ({
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, "");
 
+  // `imagenes` puede venir como array o como JSON string según el registro;
+// `parseImages` normaliza ambas formas. Antes, si llegaba un string, quedaba
+// como texto y el carrusel no renderizaba nada.
+  const parsedImages = parseImages(post.imagenes);
   const allImages =
-    post.imagenes || (post.foto_propiedad ? [post.foto_propiedad] : []);
+    parsedImages.length > 0
+      ? parsedImages
+      : post.foto_propiedad
+        ? [post.foto_propiedad]
+        : [];
 
   // Datos variables
   const userName =
@@ -70,10 +82,7 @@ export const SpecialPostCard = ({
         </div>
 
         {/* Avatar Central con efecto 'burst' */}
-        <div
-          className="my-6 relative z-10 cursor-pointer hover:scale-105 transition-transform duration-300"
-          onClick={onUserClick}
-        >
+        <div className="my-6 relative z-10">
           <div className="p-2 rounded-full border-2 border-white border-dashed bg-white/20 backdrop-blur-sm">
             <div className="w-32 h-32 md:w-40 md:h-40 rounded-full border-4 border-white overflow-hidden shadow-xl">
               {userAvatar ? (
@@ -152,10 +161,7 @@ export const SpecialPostCard = ({
           style={{ backgroundColor: mainColor }}
         >
           {/* Avatar sobrepuesto (Left) */}
-          <div
-            className="relative -mt-16 mr-4 z-20 shrink-0 cursor-pointer hover:scale-105 transition-transform duration-300"
-            onClick={onUserClick}
-          >
+          <div className="relative -mt-16 mr-4 z-20 shrink-0">
             <div className="w-24 h-24 md:w-24 md:h-24 rounded-full border-4 border-white shadow-lg overflow-hidden bg-white">
               {userAvatar ? (
                 <img
@@ -444,11 +450,8 @@ export const SpecialPostCard = ({
               este bloque solo hacía falta agregarlo aquí. En modo "sin
               datos" (hideData) no se muestra ni siquiera el placeholder. */}
           {!hideData && (
-            <div
-              className="flex items-center gap-3 mb-4 cursor-pointer hover:bg-gray-50 p-2 -m-2 rounded-2xl transition-colors group"
-              onClick={onUserClick}
-            >
-              <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden group-hover:scale-105 transition-transform duration-300">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden">
                 {userAvatar ? (
                   <img
                     src={userAvatar}
@@ -462,9 +465,7 @@ export const SpecialPostCard = ({
                 )}
               </div>
               <div>
-                <h3 className="font-bold text-gray-900 group-hover:text-[#0891b2] transition-colors">
-                  {userName}
-                </h3>
+                <h3 className="font-bold text-gray-900">{userName}</h3>
                 <p className="text-xs text-gray-500">
                   {post.created_at
                     ? new Date(post.created_at).toLocaleDateString()
@@ -637,7 +638,7 @@ export const SpecialPostCard = ({
           {nota.trim().length > 0 && (
             <>
               <div className="h-px bg-gray-100 my-4" />
-              <p className="text-sm text-gray-600 leading-relaxed">
+              <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap break-words">
                 <span className="font-bold text-gray-900">Nota: </span>
                 {nota}
               </p>
@@ -645,34 +646,34 @@ export const SpecialPostCard = ({
           )}
         </div>
 
-        {/* CTA Ofrecer propiedad */}
-        <div className="px-5 md:px-6 pb-5 md:pb-6">
-          <button
-            type="button"
-            onClick={handleOffer}
-            className="w-full py-4 rounded-2xl bg-primary text-white font-bold hover:bg-primary/90 active:scale-[0.99] transition-all"
-          >
-            Ofrecer propiedad 👋
-          </button>
-        </div>
+        {/* CTA "Ofrecer propiedad". Solo se pinta si hay un handler: en la vista
+            pública compartida no se pasa ninguno, y un botón que no hace
+            nada es peor que no tenerlo. */}
+        {handleOffer && (
+          <div className="px-5 md:px-6 pb-5 md:pb-6">
+            <button
+              type="button"
+              onClick={handleOffer}
+              className="w-full py-4 rounded-2xl bg-primary text-white font-bold hover:bg-primary/90 active:scale-[0.99] transition-all"
+            >
+              Ofrecer propiedad 👋
+            </button>
+          </div>
+        )}
       </div>
     );
   }
 
   // --- RENDER: TEXT ONLY (NO IMAGES, TYPE POST) ---
   const isTextOnly =
-    (!post.imagenes || post.imagenes.length === 0) &&
-    (!postType || postType === "post");
+    parsedImages.length === 0 && (!postType || postType === "post");
 
   if (isTextOnly) {
     return (
       <div className="flex flex-col bg-white rounded-3xl p-6 border border-gray-100 shadow-sm max-w-lg mx-auto w-full">
         {/* Header */}
-        <div
-          className="flex items-center gap-3 mb-4 cursor-pointer hover:bg-gray-50 p-2 -m-2 rounded-2xl transition-colors group"
-          onClick={onUserClick}
-        >
-          <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden group-hover:scale-105 transition-transform duration-300">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden">
             {userAvatar ? (
               <img
                 src={userAvatar}
@@ -686,9 +687,7 @@ export const SpecialPostCard = ({
             )}
           </div>
           <div>
-            <h3 className="font-bold text-gray-900 group-hover:text-[#0891b2] transition-colors">
-              {userName}
-            </h3>
+            <h3 className="font-bold text-gray-900">{userName}</h3>
             <p className="text-xs text-gray-500">
               {post.created_at
                 ? new Date(post.created_at).toLocaleDateString()
@@ -712,11 +711,8 @@ export const SpecialPostCard = ({
   return (
     <div className="flex flex-col bg-white rounded-3xl p-6 border border-gray-100 shadow-sm max-w-lg mx-auto w-full">
       {/* Header */}
-      <div
-        className="flex items-center gap-3 mb-4 cursor-pointer hover:bg-gray-50 p-2 -m-2 rounded-2xl transition-colors group"
-        onClick={onUserClick}
-      >
-        <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden group-hover:scale-105 transition-transform duration-300">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden">
           {userAvatar ? (
             <img
               src={userAvatar}
@@ -730,9 +726,7 @@ export const SpecialPostCard = ({
           )}
         </div>
         <div>
-          <h3 className="font-bold text-gray-900 group-hover:text-[#0891b2] transition-colors">
-            {userName}
-          </h3>
+          <h3 className="font-bold text-gray-900">{userName}</h3>
           <p className="text-xs text-gray-500">
             {post.created_at
               ? new Date(post.created_at).toLocaleDateString()

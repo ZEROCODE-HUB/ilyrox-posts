@@ -9,7 +9,6 @@ import {
 import { getProfileById } from "../../services/userService";
 import type { Property as GlobalProperty, perfiles } from "../types";
 
-import { DownloadAppModal } from "../Shared/DownloadAppModal";
 import { GeneratedByIlyrox } from "../Shared/GeneratedByIlyrox";
 import { isInAppBrowser, openInApp } from "../../lib/openInApp";
 
@@ -24,7 +23,6 @@ export const PropertyViewer = ({
   const [agent, setAgent] = useState<perfiles | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     // Dentro de webviews (Instagram, Facebook, WhatsApp, Messenger…) los
@@ -115,10 +113,13 @@ export const PropertyViewer = ({
   return (
     <div className="flex flex-col items-center w-full pb-24 md:pb-0">
       <div className="bg-white rounded-none md:rounded-[2.5rem] shadow-sm md:border md:border-gray-100 p-0 md:p-8 max-w-3xl mx-auto overflow-hidden">
-        {/* Agent Header */}
+        {/* Agent Header. Sin onClick a propósito: el click en la foto de perfil
+            NO abre ningún modal (antes abría el de "Lleva a Ilyrox en tu
+            bolsillo"). `AgentCard` cae solo en `cursor-default` cuando no
+            recibe la prop, así que tampoco insinúa que sea pulsable. */}
         {agent && !hideData && (
           <div className="flex justify-between items-center px-2 py-2 md:px-0 md:mb-2">
-            <AgentCard agent={agent} onClick={() => setIsModalOpen(true)} />
+            <AgentCard agent={agent} />
           </div>
         )}
 
@@ -137,11 +138,6 @@ export const PropertyViewer = ({
       </div>
 
       <GeneratedByIlyrox className="mt-4 mb-8" />
-
-      <DownloadAppModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-      />
     </div>
   );
 };

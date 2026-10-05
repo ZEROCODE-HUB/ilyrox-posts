@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import { getReelById } from "../../services/reelService";
 import { getProfileById } from "../../services/userService";
-import { DownloadAppModal } from "../Shared/DownloadAppModal";
 import { GeneratedByIlyrox } from "../Shared/GeneratedByIlyrox";
 import type { Reel, perfiles } from "../types";
 import Avatar from "../Shared/Avatar";
@@ -18,7 +17,6 @@ export const ReelViewer = ({
   const [agent, setAgent] = useState<perfiles | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -74,13 +72,11 @@ export const ReelViewer = ({
   return (
     <div className="flex flex-col items-center w-full pb-24">
       <div className="flex flex-col bg-black border border-gray-800 shadow-2xl overflow-hidden relative max-w-lg mx-auto aspect-auto">
-        {/* Transparent Header with User Info — oculto en modo "sin datos" */}
+        {/* Header con datos del autor — oculto en modo "sin datos".
+            Sin onClick a propósito: el click aquí no abre ningún modal. */}
         {!hideData && (
-          <div
-            onClick={() => setIsModalOpen(true)}
-            className="absolute top-0 left-0 right-0 z-10 p-6 bg-linear-to-b from-black/60 to-transparent flex items-center gap-3 cursor-pointer group"
-          >
-            <div className="w-10 h-10 rounded-full border-2 border-white/20 overflow-hidden group-hover:scale-110 transition-transform duration-300 shadow-xl">
+          <div className="absolute top-0 left-0 right-0 z-10 p-6 bg-linear-to-b from-black/60 to-transparent flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full border-2 border-white/20 overflow-hidden shadow-xl">
               {agent?.foto ? (
                 <img
                   src={agent.foto}
@@ -92,11 +88,11 @@ export const ReelViewer = ({
               )}
             </div>
             <div className="flex flex-col">
-              <span className="text-white font-bold text-shadow-sm group-hover:text-primary transition-colors">
+              <span className="text-white font-bold text-shadow-sm">
                 {agent?.nombre_completo || "Usuario"}
               </span>
               <span className="text-white/60 text-xs text-shadow-sm">
-                Ver perfil
+                ilyrox
               </span>
             </div>
           </div>
@@ -114,7 +110,7 @@ export const ReelViewer = ({
 
         <div className="absolute bottom-0 left-0 right-0 bg-linear-to-t from-black/90 via-black/40 to-transparent p-8 pt-20 pointer-events-none">
           <div className="text-white">
-            <p className="font-medium text-sm text-gray-200 line-clamp-3 leading-relaxed pb-7">
+            <p className="font-medium text-sm text-gray-200 line-clamp-3 leading-relaxed pb-7 whitespace-pre-wrap">
               {reel.descripcion || "Sin descripción"}
             </p>
           </div>
@@ -122,11 +118,6 @@ export const ReelViewer = ({
       </div>
 
       <GeneratedByIlyrox className="mt-4 mb-8" />
-
-      <DownloadAppModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-      />
     </div>
   );
 };

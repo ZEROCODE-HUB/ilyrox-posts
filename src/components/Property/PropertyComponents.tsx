@@ -4,13 +4,17 @@ import type { Property } from "../types";
 import { CardFeature } from "./CardFeature";
 import { ImageCarousel } from "../Shared/ImageCarousel";
 import { CopyableId } from "./CopyableId";
+import { parseImages } from "../../utils/parseImages";
 
 interface MainImageProps {
   property: Property;
 }
 
 export function MainImage({ property }: MainImageProps) {
-  const images = property.fotos || [];
+  // `fotos` llega como array en casi todos los registros, pero hay filas
+  // guardadas como JSON string. Sin normalizar, `.map` del carrusel revienta
+  // y la galería entera se queda en blanco. `parseImages` cubre ambas formas.
+  const images = parseImages(property.fotos);
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -266,7 +270,11 @@ export function PropertyInfo({ property, hideData }: PropertyInfoProps) {
 
       <div className="flex flex-col gap-2">
         <p className="text-lg font-bold text-gray-900">Descripción</p>
-        <p className="text-gray-600 text-sm leading-relaxed">
+        {/* `whitespace-pre-wrap` es lo que hace que los saltos de línea que se
+            guardaron se vean tal cual: sin esto el navegador colapsa los
+            `\n\n` y todo queda como un solo párrafo corrido.
+            `break-words` evita que una URL o palabra larga desborde la caja. */}
+        <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap break-words">
           {property.descripcion}
         </p>
       </div>
