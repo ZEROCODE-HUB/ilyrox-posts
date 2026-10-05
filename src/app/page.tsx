@@ -6,6 +6,16 @@ import { PostViewer } from "../components/Post/PostViewer";
 import { getPropertyById } from "../services/propertyService";
 import { getReelById } from "../services/reelService";
 import { getPostById } from "../services/postService";
+import { metaDescription } from "../utils/metaText";
+
+/** Largo máximo de `og:description`. WhatsApp y Facebook recortan igual o
+ *  peor, y un texto de 1.500 caracteres se renderiza amontonado. */
+const MAX_META_DESCRIPTION = 180;
+
+/** Dimensiones de la imagen que devuelve /api/og. Se declaran porque hay
+ *  scrapers que descartan la previsualización si no conocen el tamaño. */
+const OG_WIDTH = 1200;
+const OG_HEIGHT = 630;
 
 export async function generateMetadata({
   searchParams,
@@ -15,9 +25,14 @@ export async function generateMetadata({
   const resolvedParams = await searchParams;
   const type = resolvedParams.type as string | undefined;
   const id = resolvedParams.id as string | undefined;
+  const sharedBy = resolvedParams.sharedBy as string | undefined;
+  const sd = resolvedParams.sd as string | undefined;
 
+  const defaultDescription =
+    "Encuentra la propiedad de tus sueños en Ilyrox";
   let title = "Ilyrox Web";
-  let description = "Encuentra la propiedad de tus sueños en Ilyrox";
+  let description = defaultDescription;
+
   // Try to get base URL from headers for dynamic environments (Vercel previews, etc.)
   const host = (await headers()).get("host");
   const protocol = host?.includes("localhost") ? "http" : "https";
@@ -25,37 +40,51 @@ export async function generateMetadata({
     ? `${protocol}://${host}`
     : process.env.NEXT_PUBLIC_BASE_URL || "https://feeds.ilyrox.com";
 
-  let imageUrl = `${baseUrl}/Logo.jpeg`; // Fallback URL
+  const logoUrl = `${baseUrl}/Logo.jpeg`; // Fallback URL
 
-  const makeAbsolute = (url: string) => {
-    if (!url) return "";
-    if (url.startsWith("http")) return url;
-    return `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
-  };
+  let imageUrl = logoUrl;
+  // `false` hasta saber si vamos a usar /api/og: solo entonces tiene sentido
+  // declarar width/height (las declara un PNG nuestro, no el logo suelto).
+  let usesOgRoute = false;
 
   if (type === "property" && id) {
     title = "Propiedad en Ilyrox";
     try {
       const prop = await getPropertyById(id);
       if (prop) {
-        title = `ILYROX - ${prop.subtipo || prop.tipo} en ${prop.location?.city || prop.municipio || ""}`;
-        description = prop.descripcion || description;
-        if (prop.fotos && prop.fotos.length > 0) {
-          imageUrl = makeAbsolute(prop.fotos[0]);
-        }
+        const lugar =
+          prop.municipio || prop.location?.city || prop.estado || "";
+        title = `ILYROX - ${prop.subtipo || prop.tipo}${lugar ? ` en ${lugar}` : ""}`;
+        description = metaDescription(
+          prop.descripcion,
+          MAX_META_DESCRIPTION,
+          defaultDescription,
+        );
       }
     } catch (e) {
       console.error(e);
     }
+
+    // La miniatura SIEMPRE pasa por /api/og. Apuntar directo a `fotos[0]`
+    // fallaba de forma intermitente: las fotos importadas de EasyBroker pesan
+    // 2-3 MB en PNG, y los crawlers de WhatsApp/Facebook abortan la descarga
+    // (o la imagen ni aparece). /api/og la rasteriza a 1200x630 y la cachea.
+    imageUrl = `${baseUrl}/api/og?type=property&id=${encodeURIComponent(id)}`;
+    usesOgRoute = true;
   } else if (id) {
     // Both Reels and Posts will use the dynamic OG image route
-    imageUrl = `${baseUrl}/api/og?type=${type}&id=${id}`;
+    imageUrl = `${baseUrl}/api/og?type=${type}&id=${encodeURIComponent(id)}`;
+    usesOgRoute = true;
     if (type === "post") {
       title = "Publicación en Ilyrox";
       try {
         const post = await getPostById(id);
         if (post) {
-          description = post.contenido || description;
+          description = metaDescription(
+            post.contenido,
+            MAX_META_DESCRIPTION,
+            defaultDescription,
+          );
         }
       } catch (e) {
         console.error(e);
@@ -65,7 +94,11 @@ export async function generateMetadata({
       try {
         const reel = await getReelById(id);
         if (reel) {
-          description = reel.descripcion || description;
+          description = metaDescription(
+            reel.descripcion,
+            MAX_META_DESCRIPTION,
+            defaultDescription,
+          );
         }
       } catch (e) {
         console.error(e);
@@ -73,12 +106,32 @@ export async function generateMetadata({
     }
   }
 
+  // La URL canónica debe llevar los MISMOS parámetros que se compartieron.
+  // Si no, el crawler resuelve `og:url` a una dirección sin sharedBy/sd y el
+  // link "canónico" deja de ser el que el usuario mandó.
+  const canonicalQuery = new URLSearchParams();
+  if (type) canonicalQuery.set("type", type);
+  if (id) canonicalQuery.set("id", id);
+  if (sharedBy?.trim()) canonicalQuery.set("sharedBy", sharedBy.trim());
+  if (sd === "1") canonicalQuery.set("sd", "1");
+  const canonicalUrl = `${baseUrl}/?${canonicalQuery.toString()}`;
+
   // Smart banner de Safari: si la app está instalada la abre, si no lleva al App
   // Store. `app-argument` es la URL que recibe la app al abrirse.
   const appleItunesApp =
     type && id
-      ? `app-id=6756507569, app-argument=${baseUrl}/?type=${type}&id=${id}`
+      ? `app-id=6756507569, app-argument=${canonicalUrl}`
       : `app-id=6756507569`;
+
+  const ogImage = usesOgRoute
+    ? {
+        url: imageUrl,
+        width: OG_WIDTH,
+        height: OG_HEIGHT,
+        type: "image/png",
+        alt: title,
+      }
+    : { url: imageUrl, alt: title };
 
   return {
     metadataBase: new URL(baseUrl),
@@ -88,15 +141,15 @@ export async function generateMetadata({
     openGraph: {
       title,
       description,
-      images: [imageUrl],
-      url: `/?type=${type}&id=${id}`,
+      images: [ogImage],
+      url: canonicalUrl,
       type: "website",
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
-      images: [imageUrl],
+      images: [ogImage.url],
     },
   };
 }

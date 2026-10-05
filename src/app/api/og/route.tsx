@@ -2,12 +2,32 @@ import { ImageResponse } from "next/og";
 import { getPostById } from "../../../services/postService";
 import { getReelById } from "../../../services/reelService";
 import { getProfileById } from "../../../services/userService";
+import { getPropertyById } from "../../../services/propertyService";
 import { formatPrice } from "../../../utils/priceFormatter";
 import firstUpperCase from "../../../utils/firstUpperCase";
+import { parseImages } from "../../../utils/parseImages";
+import { plainText, truncate } from "../../../utils/metaText";
 
 const Logo =
   (process.env.NEXT_PUBLIC_BASE_URL || "https://ilyrox.vercel.app") +
   "/Logo.jpeg";
+
+const W = 1200;
+const H = 630;
+
+/**
+ * La imagen que se devuelve SIEMPRE lleva esta cabecera.
+ *
+ * Es lo que hace que la miniatura no se regenere en cada visita del crawler:
+ * WhatsApp, Facebook y Twitter piden el mismo par (type,id) muchas veces, y sin
+ * cache cada request paga el render de Satori + la descarga de la foto. Con
+ * `stale-while-revalidate` el primer hit paga y los siguientes reciben la
+ * versión cacheada mientras se refresca en segundo plano.
+ */
+const OG_CACHE_HEADERS = {
+  "Cache-Control":
+    "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400",
+};
 
 /**
  * Función para renderizar el Avatar compatible con Satori (evitando Tailwind)
@@ -94,6 +114,311 @@ export async function GET(request: Request) {
   };
 
   try {
+    if (type === "property") {
+      console.log(`[OG Route] Attempting to fetch property with ID: ${urlId}`);
+      const prop = await getPropertyById(urlId);
+      if (!prop) {
+        console.error(
+          `[OG Route] Property NOT FOUND or RLS issue for id: ${urlId}`,
+        );
+        return new Response("Property not found", { status: 404 });
+      }
+
+      // `fotos` puede venir como array o como JSON string según cómo se
+      // guardó el registro; `parseImages` normaliza ambas formas sin lanzar.
+      const rawPhoto = parseImages(prop.fotos)[0] ?? "";
+      const heroPhoto = rawPhoto ? makeAbsolute(rawPhoto) : "";
+
+      // El tipo va arriba como etiqueta ("HABITACIONAL") y el subtipo como título
+// ("Casa"). Concatenarlos daba textos como "Casa en Habitacional".
+      const titulo = prop.subtipo || prop.tipo || "Propiedad en Ilyrox";
+
+      const ubicacion =
+        [prop.colonia, prop.municipio, prop.estado]
+          .map((s) => (s ?? "").trim())
+          .filter(Boolean)
+          .join(", ") || "Ubicación por confirmar";
+
+      // La primera operación es la que se muestra; si no hay ninguna, la banda
+      // inferior omite el precio en lugar de imprimir "undefined".
+      const op = prop.operaciones_propiedad?.[0];
+      const precio =
+        op && typeof op.precio === "number"
+          ? `${formatPrice(op.precio)} ${op.moneda ?? "MXN"}`
+          : "";
+
+      // La tarjeta de texto sobre fondo oscuro se usa cuando la propiedad no
+      // tiene foto utilizable, para que el link COMPARTIDO nunca quede sin
+      // miniatura. Como no lleva foto, la descripción se muestra aquí: es el
+      // caso en el que más información útil puede aportar.
+      const resumen = truncate(plainText(prop.descripcion), 220);
+
+      const textCard = (
+        <div
+          style={{
+            height: "100%",
+            width: "100%",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            backgroundColor: "#131622",
+            padding: "70px",
+            fontFamily: "sans-serif",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              marginBottom: "36px",
+            }}
+          >
+            <img
+              src={Logo}
+              width={96}
+              height={96}
+              style={{ borderRadius: "28px" }}
+            />
+            <span
+              style={{
+                marginLeft: "24px",
+                color: "white",
+                fontSize: "52px",
+                fontWeight: 800,
+                letterSpacing: "6px",
+                display: "flex",
+              }}
+            >
+              ILYROX
+            </span>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              fontSize: "30px",
+              color: "#45a0a5",
+              fontWeight: 800,
+              textTransform: "uppercase",
+              letterSpacing: "3px",
+              marginBottom: "16px",
+            }}
+          >
+            {prop.tipo || "Propiedad"}
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              color: "white",
+              fontSize: "58px",
+              fontWeight: 800,
+              lineHeight: 1.15,
+              marginBottom: "24px",
+            }}
+          >
+            {titulo}
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              color: "#cbd5e1",
+              fontSize: "30px",
+              marginBottom: "20px",
+            }}
+          >
+            {`📍 ${ubicacion}`}
+          </div>
+
+          {precio && (
+            <div
+              style={{
+                display: "flex",
+                alignSelf: "flex-start",
+                padding: "14px 32px",
+                backgroundColor: "#45a0a5",
+                borderRadius: "16px",
+                color: "white",
+                fontSize: "38px",
+                fontWeight: 800,
+                marginBottom: resumen ? "34px" : "0",
+              }}
+            >
+              {precio}
+            </div>
+          )}
+
+          {/* Descripción recortada a una sola línea lógica. Sin foto, este
+              bloque es lo que hace que la preview luzca como una ficha real
+              y no solo el logo. */}
+          {resumen && (
+            <div
+              style={{
+                display: "flex",
+                color: "#94a3b8",
+                fontSize: "27px",
+                lineHeight: 1.45,
+              }}
+            >
+              {resumen}
+            </div>
+          )}
+        </div>
+      );
+
+      // Sin foto: tarjeta de texto. Es preferible a un 500 — un 404 o un error
+      // en la imagen hacen que WhatsApp/Facebook no muestren previsualización.
+      if (!heroPhoto) {
+        console.warn(
+          `[OG Route] Property ${urlId} has no usable photo; serving text card.`,
+        );
+        return new ImageResponse(textCard, {
+          width: W,
+          height: H,
+          headers: OG_CACHE_HEADERS,
+        });
+      }
+
+      return new ImageResponse(
+        <div
+          style={{
+            height: "100%",
+            width: "100%",
+            display: "flex",
+            flexDirection: "column",
+            backgroundColor: "#131622",
+            fontFamily: "sans-serif",
+          }}
+        >
+          {/* Foto principal. Es el motivo por el que esta ruta existe: el
+              crawler se baja UN PNG de 1200x630 en vez de la foto original,
+              que en las importadas de EasyBroker pesa 2-3 MB. */}
+          <div style={{ display: "flex", width: "100%", height: "400px" }}>
+            <img
+              src={heroPhoto}
+              width={W}
+              height={400}
+              style={{ width: "100%", height: "400px", objectFit: "cover" }}
+            />
+          </div>
+
+          {/* Banda de datos */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flex: 1,
+              padding: "34px 56px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center",
+                flex: 1,
+                paddingRight: "40px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  color: "#45a0a5",
+                  fontSize: "24px",
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  letterSpacing: "3px",
+                  marginBottom: "8px",
+                }}
+              >
+                {prop.tipo || "Propiedad"}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  color: "white",
+                  fontSize: "44px",
+                  fontWeight: 800,
+                  lineHeight: 1.15,
+                  marginBottom: "10px",
+                }}
+              >
+                {titulo}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  color: "#cbd5e1",
+                  fontSize: "26px",
+                }}
+              >
+                {`📍 ${ubicacion}`}
+              </div>
+            </div>
+
+            {/* Precio + logo, columna derecha */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-end",
+                justifyContent: "center",
+              }}
+            >
+              {precio && (
+                <div
+                  style={{
+                    display: "flex",
+                    padding: "12px 28px",
+                    backgroundColor: "#45a0a5",
+                    borderRadius: "14px",
+                    color: "white",
+                    fontSize: "34px",
+                    fontWeight: 800,
+                    marginBottom: "20px",
+                  }}
+                >
+                  {precio}
+                </div>
+              )}
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <img
+                  src={Logo}
+                  width={56}
+                  height={56}
+                  style={{ borderRadius: "18px" }}
+                />
+                <span
+                  style={{
+                    marginLeft: "14px",
+                    color: "white",
+                    fontSize: "28px",
+                    fontWeight: 800,
+                    letterSpacing: "4px",
+                    display: "flex",
+                  }}
+                >
+                  ILYROX
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>,
+        { width: W, height: H, headers: OG_CACHE_HEADERS },
+      );
+    }
+
     if (type === "post") {
       console.log(`[OG Route] Attempting to fetch post with ID: ${urlId}`);
       const post = await getPostById(urlId);
@@ -113,7 +438,10 @@ export async function GET(request: Request) {
       const userAvatar = post.foto_perfil_usuario || post.perfiles?.foto;
       const absoluteAvatar = makeAbsolute(userAvatar || "/Logo.jpeg");
       const content = post.contenido || "";
-      const images = (post.imagenes || []).map(makeAbsolute);
+      // `parseImages` en vez de `.map()` directo: si `imagenes` quedó guardado como
+      // JSON string, `.map` no existe y la ruta reventaba con un 500 — lo que
+      // se traducía directamente en "la miniatura no aparece".
+      const images = parseImages(post.imagenes).map(makeAbsolute);
       const userLocation = post.ubicacion || post.perfiles?.ciudad;
 
       console.log("img", post.foto_propiedad);
@@ -135,7 +463,10 @@ export async function GET(request: Request) {
           : SPECIAL_COLORS.openhouse;
         const bannerText = isSold ? "VENDIDO" : "OPEN HOUSE";
         const headerImage =
-          images[0] || post.foto_propiedad || makeAbsolute("/Logo.jpeg");
+          images[0] ||
+          (post.foto_propiedad
+            ? makeAbsolute(post.foto_propiedad)
+            : makeAbsolute("/Logo.jpeg"));
         const eventDate = post.fecha_hora || "Próximamente";
 
         return new ImageResponse(
@@ -269,7 +600,7 @@ export async function GET(request: Request) {
               </div>
             </div>
           </div>,
-          { width: 1200, height: 630 },
+          { width: W, height: H, headers: OG_CACHE_HEADERS },
         );
       }
 
@@ -361,7 +692,7 @@ export async function GET(request: Request) {
               )}
             </div>
           </div>,
-          { width: 1200, height: 630 },
+          { width: W, height: H, headers: OG_CACHE_HEADERS },
         );
       }
 
@@ -581,7 +912,7 @@ export async function GET(request: Request) {
               </div>
             )}
           </div>,
-          { width: 1200, height: 630 },
+          { width: W, height: H, headers: OG_CACHE_HEADERS },
         );
       }
 
@@ -642,7 +973,7 @@ export async function GET(request: Request) {
               {content.length > 100 ? content.slice(0, 100) + "..." : content}
             </p>
           </div>,
-          { width: 1200, height: 630 },
+          { width: W, height: H, headers: OG_CACHE_HEADERS },
         );
       } else {
         return new ImageResponse(
@@ -752,7 +1083,7 @@ export async function GET(request: Request) {
               </div>
             </div>
           </div>,
-          { width: 1200, height: 630 },
+          { width: W, height: H, headers: OG_CACHE_HEADERS },
         );
       }
     }
@@ -901,7 +1232,7 @@ export async function GET(request: Request) {
             </div>
           </div>
         </div>,
-        { width: 1200, height: 630 },
+        { width: W, height: H, headers: OG_CACHE_HEADERS },
       );
     }
 
