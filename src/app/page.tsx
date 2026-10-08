@@ -6,34 +6,6 @@ import { PostViewer } from "../components/Post/PostViewer";
 import { getPropertyById } from "../services/propertyService";
 import { getReelById } from "../services/reelService";
 import { getPostById } from "../services/postService";
-import { metaDescription } from "../utils/metaText";
-
-/** Largo máximo de `og:description`. WhatsApp y Facebook recortan igual o
- *  peor, y un texto de 1.500 caracteres se renderiza amontonado. */
-const MAX_META_DESCRIPTION = 180;
-
-/** Dimensiones de la imagen que devuelve /api/og. Se declaran porque hay
- *  scrapers que descartan la previsualización si no conocen el tamaño. */
-const OG_WIDTH = 1200;
-const OG_HEIGHT = 630;
-
-/**
- * Versión del OG embebido en el meta tag `og:image`.
- *
- * Por qué existe:
- *   WhatsApp y Facebook cachean el preview POR URL EXACTA del og:image.
- *   Si el og:image siempre es `/api/og?type=post&id=X`, cuando se comparte
- *   el link por primera vez el crawler pide esa URL; si responde lento o
- *   falla, WhatsApp guarda "falló" para ESA URL y ya nunca más la pide.
- *   Re-compartir el link no arregla nada porque la URL es la misma.
- *
- *   Al agregar `&v=N` al og:image, cada vez que se incrementa `N` (en un
- *   deploy) TODOS los links quedan con una URL de og:image "nueva" y
- *   WhatsApp se ve forzado a pedirla de cero. Es un cache-buster manual.
- *
- *   Incrementar este número en cada deploy que cambie el formato del OG.
- */
-const OG_VERSION = "2";
 
 export async function generateMetadata({
   searchParams,
@@ -43,14 +15,9 @@ export async function generateMetadata({
   const resolvedParams = await searchParams;
   const type = resolvedParams.type as string | undefined;
   const id = resolvedParams.id as string | undefined;
-  const sharedBy = resolvedParams.sharedBy as string | undefined;
-  const sd = resolvedParams.sd as string | undefined;
 
-  const defaultDescription =
-    "Encuentra la propiedad de tus sueños en Ilyrox";
   let title = "Ilyrox Web";
-  let description = defaultDescription;
-
+  let description = "Encuentra la propiedad de tus sueños en Ilyrox";
   // Try to get base URL from headers for dynamic environments (Vercel previews, etc.)
   const host = (await headers()).get("host");
   const protocol = host?.includes("localhost") ? "http" : "https";
@@ -58,53 +25,39 @@ export async function generateMetadata({
     ? `${protocol}://${host}`
     : process.env.NEXT_PUBLIC_BASE_URL || "https://feeds.ilyrox.com";
 
-  const logoUrl = `${baseUrl}/Logo.jpeg`; // Fallback URL
+  let imageUrl = `${baseUrl}/Logo.jpeg`; // Fallback URL
 
-  let imageUrl = logoUrl;
-  // `false` hasta saber si vamos a usar /api/og: solo entonces tiene sentido
-  // declarar width/height (las declara un PNG nuestro, no el logo suelto).
-  let usesOgRoute = false;
+  const makeAbsolute = (url: string) => {
+    if (!url) return "";
+    if (url.startsWith("http")) return url;
+    return `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
+  };
 
   if (type === "property" && id) {
     title = "Propiedad en Ilyrox";
     try {
       const prop = await getPropertyById(id);
       if (prop) {
-        const lugar =
-          prop.municipio || prop.location?.city || prop.estado || "";
-        title = `ILYROX - ${prop.subtipo || prop.tipo}${lugar ? ` en ${lugar}` : ""}`;
-        description = metaDescription(
-          prop.descripcion,
-          MAX_META_DESCRIPTION,
-          defaultDescription,
-        );
+        title = `ILYROX - Propiedad ${prop.tipo}`;
+        description = prop.descripcion || description;
+        if (prop.fotos && prop.fotos.length > 0) {
+          imageUrl = makeAbsolute(prop.fotos[0]);
+        }
       }
     } catch (e) {
       console.error(e);
     }
-
-    // La miniatura SIEMPRE pasa por /api/og. Apuntar directo a `fotos[0]`
-    // fallaba de forma intermitente: las fotos importadas de EasyBroker pesan
-    // 2-3 MB en PNG, y los crawlers de WhatsApp/Facebook abortan la descarga
-    // (o la imagen ni aparece). /api/og la rasteriza a 1200x630 y la cachea.
-    // `&v=${OG_VERSION}` es un cache-buster: si WhatsApp cacheó "falló" para
-    // una versión anterior, este parámetro fuerza al crawler a pedir de cero.
-    imageUrl = `${baseUrl}/api/og?type=property&id=${encodeURIComponent(id)}&v=${OG_VERSION}`;
-    usesOgRoute = true;
   } else if (id) {
-    // Both Reels and Posts will use the dynamic OG image route
-    imageUrl = `${baseUrl}/api/og?type=${type}&id=${encodeURIComponent(id)}&v=${OG_VERSION}`;
-    usesOgRoute = true;
+    // Both Reels and Posts will use the dynamic OG image route.
+    // `&v=2` es un cache-buster: si WhatsApp cacheó "falló" para una versión
+    // anterior del OG, este parámetro fuerza al crawler a pedir de cero.
+    imageUrl = `${baseUrl}/api/og?type=${type}&id=${id}&v=2`;
     if (type === "post") {
       title = "Publicación en Ilyrox";
       try {
         const post = await getPostById(id);
         if (post) {
-          description = metaDescription(
-            post.contenido,
-            MAX_META_DESCRIPTION,
-            defaultDescription,
-          );
+          description = post.contenido || description;
         }
       } catch (e) {
         console.error(e);
@@ -114,11 +67,7 @@ export async function generateMetadata({
       try {
         const reel = await getReelById(id);
         if (reel) {
-          description = metaDescription(
-            reel.descripcion,
-            MAX_META_DESCRIPTION,
-            defaultDescription,
-          );
+          description = reel.descripcion || description;
         }
       } catch (e) {
         console.error(e);
@@ -126,50 +75,22 @@ export async function generateMetadata({
     }
   }
 
-  // La URL canónica debe llevar los MISMOS parámetros que se compartieron.
-  // Si no, el crawler resuelve `og:url` a una dirección sin sharedBy/sd y el
-  // link "canónico" deja de ser el que el usuario mandó.
-  const canonicalQuery = new URLSearchParams();
-  if (type) canonicalQuery.set("type", type);
-  if (id) canonicalQuery.set("id", id);
-  if (sharedBy?.trim()) canonicalQuery.set("sharedBy", sharedBy.trim());
-  if (sd === "1") canonicalQuery.set("sd", "1");
-  const canonicalUrl = `${baseUrl}/?${canonicalQuery.toString()}`;
-
-  // Smart banner de Safari: si la app está instalada la abre, si no lleva al App
-  // Store. `app-argument` es la URL que recibe la app al abrirse.
-  const appleItunesApp =
-    type && id
-      ? `app-id=6756507569, app-argument=${canonicalUrl}`
-      : `app-id=6756507569`;
-
-  const ogImage = usesOgRoute
-    ? {
-        url: imageUrl,
-        width: OG_WIDTH,
-        height: OG_HEIGHT,
-        type: "image/png",
-        alt: title,
-      }
-    : { url: imageUrl, alt: title };
-
   return {
     metadataBase: new URL(baseUrl),
     title,
     description,
-    other: { "apple-itunes-app": appleItunesApp },
     openGraph: {
       title,
       description,
-      images: [ogImage],
-      url: canonicalUrl,
+      images: [imageUrl],
+      url: `/?type=${type}&id=${id}`,
       type: "website",
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
-      images: [ogImage.url],
+      images: [imageUrl],
     },
   };
 }
@@ -235,8 +156,8 @@ export default async function Page({
     <main className="pt-0 flex flex-col items-center">
       <div className="w-full transition-all duration-500 ease-in-out">
         {type === "property" && <PropertyViewer id={id} hideData={hideData} />}
-        {type === "reel" && <ReelViewer id={id} hideData={hideData} />}
-        {type === "post" && <PostViewer id={id} hideData={hideData} />}
+        {type === "reel" && <ReelViewer id={id} />}
+        {type === "post" && <PostViewer id={id} />}
       </div>
     </main>
   );
