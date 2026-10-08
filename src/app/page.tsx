@@ -17,6 +17,24 @@ const MAX_META_DESCRIPTION = 180;
 const OG_WIDTH = 1200;
 const OG_HEIGHT = 630;
 
+/**
+ * Versión del OG embebido en el meta tag `og:image`.
+ *
+ * Por qué existe:
+ *   WhatsApp y Facebook cachean el preview POR URL EXACTA del og:image.
+ *   Si el og:image siempre es `/api/og?type=post&id=X`, cuando se comparte
+ *   el link por primera vez el crawler pide esa URL; si responde lento o
+ *   falla, WhatsApp guarda "falló" para ESA URL y ya nunca más la pide.
+ *   Re-compartir el link no arregla nada porque la URL es la misma.
+ *
+ *   Al agregar `&v=N` al og:image, cada vez que se incrementa `N` (en un
+ *   deploy) TODOS los links quedan con una URL de og:image "nueva" y
+ *   WhatsApp se ve forzado a pedirla de cero. Es un cache-buster manual.
+ *
+ *   Incrementar este número en cada deploy que cambie el formato del OG.
+ */
+const OG_VERSION = "2";
+
 export async function generateMetadata({
   searchParams,
 }: {
@@ -69,11 +87,13 @@ export async function generateMetadata({
     // fallaba de forma intermitente: las fotos importadas de EasyBroker pesan
     // 2-3 MB en PNG, y los crawlers de WhatsApp/Facebook abortan la descarga
     // (o la imagen ni aparece). /api/og la rasteriza a 1200x630 y la cachea.
-    imageUrl = `${baseUrl}/api/og?type=property&id=${encodeURIComponent(id)}`;
+    // `&v=${OG_VERSION}` es un cache-buster: si WhatsApp cacheó "falló" para
+    // una versión anterior, este parámetro fuerza al crawler a pedir de cero.
+    imageUrl = `${baseUrl}/api/og?type=property&id=${encodeURIComponent(id)}&v=${OG_VERSION}`;
     usesOgRoute = true;
   } else if (id) {
     // Both Reels and Posts will use the dynamic OG image route
-    imageUrl = `${baseUrl}/api/og?type=${type}&id=${encodeURIComponent(id)}`;
+    imageUrl = `${baseUrl}/api/og?type=${type}&id=${encodeURIComponent(id)}&v=${OG_VERSION}`;
     usesOgRoute = true;
     if (type === "post") {
       title = "Publicación en Ilyrox";
