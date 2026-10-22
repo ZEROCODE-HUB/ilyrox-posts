@@ -26,6 +26,8 @@ export async function generateMetadata({
     : process.env.NEXT_PUBLIC_BASE_URL || "https://feeds.ilyrox.com";
 
   let imageUrl = `${baseUrl}/Logo.jpeg`; // Fallback URL
+  // REV05-35: alto declarado de la imagen (solo se conoce en /api/og: 1200x630).
+  let imageHeight: number | undefined;
 
   const makeAbsolute = (url: string) => {
     if (!url) return "";
@@ -41,7 +43,11 @@ export async function generateMetadata({
         title = `ILYROX - Propiedad ${prop.tipo}`;
         description = prop.descripcion || description;
         if (prop.fotos && prop.fotos.length > 0) {
-          imageUrl = makeAbsolute(prop.fotos[0]);
+          // REV05-35: WhatsApp descarta imagenes pesadas o lentas (la foto original de
+          // Tokko/EasyBroker). El optimizador de Next la entrega redimensionada (1200 px,
+          // calidad 75) desde nuestro dominio, normalmente por debajo de 300 KB.
+          const foto = makeAbsolute(prop.fotos[0]);
+          imageUrl = `${baseUrl}/_next/image?url=${encodeURIComponent(foto)}&w=1200&q=75`;
         }
       }
     } catch (e) {
@@ -52,6 +58,7 @@ export async function generateMetadata({
     // `&v=2` es un cache-buster: si WhatsApp cacheó "falló" para una versión
     // anterior del OG, este parámetro fuerza al crawler a pedir de cero.
     imageUrl = `${baseUrl}/api/og?type=${type}&id=${id}&v=2`;
+    imageHeight = 630;
     if (type === "post") {
       title = "Publicación en Ilyrox";
       try {
@@ -82,7 +89,10 @@ export async function generateMetadata({
     openGraph: {
       title,
       description,
-      images: [imageUrl],
+      // REV05-35: solo se declara el tamano cuando se conoce con certeza (/api/og = 1200x630).
+      images: imageHeight
+        ? [{ url: imageUrl, width: 1200, height: imageHeight }]
+        : [imageUrl],
       url: `/?type=${type}&id=${id}`,
       type: "website",
     },
